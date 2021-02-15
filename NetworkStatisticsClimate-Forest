@@ -1,0 +1,469 @@
+# Climate Policy Networks 
+# Term Paper
+# Authors: Yannik Friedli & Ursina Dorer
+
+###############################################
+###############################################
+
+# set working directory
+setwd("/Users/Ursina/Dropbox/Term Paper Policy Networks/Data")
+setwd("C:/Users/yanni/Dropbox/Term Paper Policy Networks/Data")
+
+
+# load necessary packages
+library(igraph)
+library(dplyr)
+library(tidyverse)
+library(gridExtra)
+
+#_________________________________________________________________________________________________________________________
+
+### load Swiss climate co-participation data 2005-08
+
+climate_1mode_05 <- read.csv2("1mode_net_05.csv", header = TRUE, row.names = 1)
+View(climate_1mode_05)
+
+# load covariates for Swiss climate data 2005-08
+
+climate_cov_05 <- read.csv2("Covariates_05.csv", header=TRUE, stringsAsFactors = FALSE)
+head(climate_cov_05)
+
+# create subset with relevant attributes
+climate_cov_05 <- subset(climate_cov_05, select = c("Full.name", "Abbrev", "ActorType", "CO2Levy", "ClimateCent"))
+
+# check whether all relevant attributes are character variables
+colnames(climate_cov_05)
+is.character(climate_cov_05$Full.name)
+is.character(climate_cov_05$Abbrev)
+is.character(climate_cov_05$ActorType)
+is.character(climate_cov_05$CO2Levy)
+is.character(climate_cov_05$ClimateCent)
+
+#_________________________________________________________________________________________________________________________
+
+### load Swiss forestry co-participation data 2005-08
+
+forest_1mode_05 <- read.csv2("WaG_Actor-Actor_Matrix.csv", header = TRUE, row.names = 1) 
+View(forest_1mode_05)
+
+# dichotomize values for co-participation (all above 1 = 1)
+
+forest_1mode_05 <- apply(forest_1mode_05,2, function(x) ifelse(x >= 1, 1, 0))
+View(forest_1mode_05)
+
+# load covariates for Swiss forrestry data 2005-08
+
+forest_cov_05 <- read.csv2("Covariates_Wald.csv", header=TRUE, stringsAsFactors = FALSE)
+head(forest_cov_05)
+
+# check whether all attributes are character variables
+colnames(forest_cov_05)
+is.character(forest_cov_05$Full.name)
+is.character(forest_cov_05$Abbrev)
+is.character(forest_cov_05$ActorType)
+is.character(forest_cov_05$WaG)
+is.character(forest_cov_05$Initiative)
+
+#_________________________________________________________________________________________________________________________
+
+### create igraph objects for both data sets
+
+# create matrices from data frames
+
+mat_climate_05 <- as.matrix(climate_1mode_05)
+View(mat_climate_05)
+
+mat_forest_05 <- as.matrix(forest_1mode_05)
+View(mat_forest_05)
+
+# transform matrices into igraph networks
+# note: since these are co-participation networks, the edges have no direction and loops are meaningless (undirected)
+
+net_climate_05 <- graph.adjacency(mat_climate_05, mode="undirected", diag=FALSE) 
+net_forest_05 <- graph.adjacency(mat_forest_05, mode="undirected", diag=FALSE)
+
+# add actor type and relevant preference variables as attributes to actors in both networks
+
+V(net_climate_05)$actorType <- climate_cov_05$ActorType
+V(net_climate_05)$tax <- climate_cov_05$CO2Levy
+V(net_climate_05)$climatecent <- climate_cov_05$ClimateCent
+
+V(net_forest_05)$actorType <- forest_cov_05$ActorType
+V(net_forest_05)$revision <- forest_cov_05$WaG
+V(net_forest_05)$initiative <- forest_cov_05$Initiative
+
+list.vertex.attributes(net_climate_05) # check variables
+list.vertex.attributes(net_forest_05)
+get.vertex.attribute(net_climate_05) # check values
+get.vertex.attribute(net_forest_05)
+
+
+#_________________________________________________________________________________________________________________________
+
+### Basic explorations
+
+# inspect verteces
+V(net_climate_05) # actors in climate network
+length(V(net_climate_05)) # 35 actors in climate network
+
+V(net_forest_05) # actors in forestry network
+length(V(net_forest_05)) # 29 actors in forest network
+
+# check whether all actors in the respective networks are somehow connected or whether there are isolated actors
+is_connected(net_climate_05) # every actor in the climate network is connected
+is_connected(net_forest_05) # every actor in the forestry network is connected
+
+
+# classification of dyads in network:
+# = relationship between each pair of nodes in network
+# note: since this these are undirected networks, ties are either mutual or non-existant
+dyad_census(net_climate_05) # In the climate network there are a total of 183 pairs of actors that are connected through a tie and 412 pairs of actors that are not directly connected
+dyad_census(net_forest_05) # In the forestry network there are a total of 208 pairs of actors that are connected through a tie and 198 pairs of actors that are not directly connected
+
+
+# diameter:
+# = longest geodesic distance in the network, whereby geodesic distance is the length of the shortest path between two nodes
+diameter(net_climate_05) # 3
+get_diameter(net_climate_05) # FOEN > FC > DETEC > CSP
+# the most distant of all 35 actors in the climate network are FOEN (Federal Office for the Environment) and CSP (Cristian Social Party), which are separated by at least three edges
+
+diameter(net_forest_05) # 4
+get_diameter(net_forest_05) # Bauart > UVEK > WVS > HelvNost > BK
+# the most distant of all 29 actors in forrestry network are Bauart (Berner Bauart Architekten und Planer) and BK (Federal Chancellery), which are separated by at least four edges
+
+# average path length:
+# = mean of the shortest distance between each pair of nodes in the network
+average.path.length(net_climate_05) # the shortest distance between two actors in the climate network includes 1.78 edges on average
+average.path.length(net_forest_05) # the shortest distance between two actors in the forrestry network includes 1.58 edges on average
+
+
+#_________________________________________________________________________________________________________________________
+
+### centralization network level
+
+# density
+# = proportion of present edges from all possible edges in the network
+
+edge_density(net_climate_05, loops=F) 
+edge_density(net_forest_05, loops=F)
+
+# in the climate network, 31 percent of possible ties are actually existant, which means that 31 percent of all pairs of actors actually co-participate in an event
+# in the forest network, 51 percent of possible ties are actually existant, which means that 51 percent of all pairs of actors actually co-participate in an event
+
+# average degree
+# degree centrality = number of a vertex's ties (no difference between incoming and outgoing ties, because co-participation networks are undirected) 
+# can either look at normalized values (value between 0 and 1 based on the total number of verteces in network) or absolute values
+# density measure is equal to average normalized degree 
+
+# non-normalized (absolute) values for average degree:
+mean(degree(net_climate_05, mode="all", loop=FALSE, normalized = FALSE)) # 10.46
+mean(degree(net_forest_05, mode="all", loop=FALSE, normalized = FALSE)) # 14.34
+# in climate network, actors co-participate with 10.5 other actors in different events, on average
+# in forest network, actors co-participate with 14.3 other actors in different events, on average
+
+
+# histograms for degree distributions (abslute values)
+# dashed line: mean of degree distribution
+
+png("plot_degreedistribution_overall.png", width=5000, height=2000, res=300)
+par(mfrow=c(1,2), mar=c(5,5,5,5)) # make sure that plots are arranged in one grid and there are some margins
+
+hist(degree(net_climate_05), col="cadetblue", xlim=c(0,35), ylim=c(0,15),
+     xlab = "Actor's Degree", ylab="Frequency", main= "Degree Distribution\n Climate Network 2005-08")
+abline(v=mean(degree(net_climate_05)), col = "darkgoldenrod2", lwd = 2, lty = "dashed", xpd = FALSE)
+
+hist(degree(net_forest_05), col="cadetblue", xlim=c(0,35), ylim=c(0,15),
+     xlab = "Actor's Degree", ylab="Frequency", main= "Degree Distribution\n Forest Network 2005-08")
+abline(v=mean(degree(net_forest_05)), col = "darkgoldenrod2", lwd = 2, lty = "dashed", xpd = FALSE)
+
+dev.off()
+
+# centralization (based on degree centrality)
+
+centralization.degree(net_climate_05, mode = "all", normalized = TRUE)$centralization # 0.49
+centralization.degree(net_forest_05, mode = "all", normalized = TRUE)$centralization # 0.38
+# centralization seems to be higher in climate network compared to forest network
+
+
+
+#_________________________________________________________________________________________________________________________
+
+### centrality actor level
+
+# function including all relevant centrality statistics to then use on both networks (for explanations about the different concepts, see below)
+centrality_stats <- function(net){
+  deg <- degree(net, mode="all", loop=FALSE, normalized = TRUE) # degree centrality 
+  btw <- betweenness(net, directed = FALSE, normalized=TRUE) # betweenness centrality
+  eigenvc <- evcent(net)$vector # eigenvector centrality
+  id <- V(net) # include identification variable
+  ret <-data.frame(cbind(Degree=deg,Betweenness=btw, 
+                         Eigenvector=eigenvc, ID=id))
+  return(ret)}
+
+# apply the function on both period networks & round results
+centrality_stats_climate_05 <- centrality_stats(net_climate_05)
+centrality_stats_forest_05 <- centrality_stats(net_forest_05)
+
+centrality_stats_climate_05 <- round(centrality_stats_climate_05[1:4], digits=2)
+centrality_stats_forest_05 <- round(centrality_stats_forest_05[1:4], digits=2)
+
+
+### Centrality stats per actor type
+
+# actor types in both networks
+unique(climate_cov_05$ActorType)
+unique(forest_cov_05$ActorType)
+# generally the same, but Civil Society only in forestry network
+
+# add actor type to data frames with results of centrality statistics calculations
+centrality_stats_climate_05$actorType <- as.factor(climate_cov_05$ActorType)
+centrality_stats_forest_05$actorType <- as.factor(forest_cov_05$ActorType)
+
+
+# calculate relevant mean centrality stats within each group
+Groupcent_climate_05 <- centrality_stats_climate_05 %>%
+  group_by(actorType) %>%
+  summarise(DegreeClimate = mean(Degree), BetweennessClimate = mean(Betweenness), 
+            EigenvectorClimate = mean(Eigenvector))
+
+Groupcent_forest_05 <- centrality_stats_forest_05 %>%
+  group_by(actorType) %>%
+  summarise(DegreeForest = mean(Degree), BetweennessForest = mean(Betweenness), 
+            EigenvectorForest =mean(Eigenvector))
+
+
+# merge data frames of two networks for better comparability
+Groupcent <- merge(Groupcent_forest_05, Groupcent_climate_05, by = "actorType") 
+View(Groupcent)
+
+# add row for Civil Society actor (because is only present in forrestry network)
+view(Groupcent_forest_05)
+Groupcent_forest_05[1,1:4]
+civil <- c("Civil Society", 0.25, 0.076, 0.189, "NA", "NA", "NA")
+
+Groupcent <- rbind(Groupcent, civil)
+View(Groupcent)
+rownames(Groupcent) <- Groupcent$actorType # change row names to actor types
+Groupcent$actorType <- NULL
+
+Groupcent <- Groupcent[, c(1, 4, 2, 5, 3, 6)] # rearrange columns for direct comparability between networks
+View(Groupcent)
+
+# export table as png
+png("Actor_type_centralities.png", height = 100*nrow(Groupcent), width = 600*ncol(Groupcent), res=250)
+grid.table(Groupcent)
+dev.off()
+
+
+### Centrality stats per preference group
+
+# add policy preferences to data frames with results of centrality statistics calculations
+centrality_stats_climate_05$tax <- as.factor(climate_cov_05$CO2Levy)
+centrality_stats_climate_05$climatecent <- as.factor(climate_cov_05$ClimateCent)
+
+centrality_stats_forest_05$revision <- as.factor(forest_cov_05$WaG)
+centrality_stats_forest_05$initiative <- as.factor(forest_cov_05$Initiative)
+
+
+# calculate relevant mean centrality stats within each group
+
+Prefcent_tax_climate_05 <- centrality_stats_climate_05 %>%
+  group_by(tax) %>%
+  summarise(Degree = mean(Degree), Betweenness = mean(Betweenness), 
+            Eigenvector = mean(Eigenvector))
+
+Prefcent_cent_climate_05 <- centrality_stats_climate_05 %>%
+  group_by(climatecent) %>%
+  summarise(Degree = mean(Degree), Betweenness = mean(Betweenness), 
+            Eigenvector = mean(Eigenvector))
+
+Prefcent_revision_forest_05 <- centrality_stats_forest_05 %>%
+  group_by(revision) %>%
+  summarise(Degree = mean(Degree), Betweenness = mean(Betweenness), 
+            Eigenvector =mean(Eigenvector))
+
+Prefcent_initiative_forest_05 <- centrality_stats_forest_05 %>%
+  group_by(initiative) %>%
+  summarise(Degree = mean(Degree), Betweenness = mean(Betweenness), 
+            Eigenvector =mean(Eigenvector))
+
+
+# rename the values of preference variables in order to make them distinguishable
+levels(Prefcent_tax_climate_05$tax)
+levels(Prefcent_tax_climate_05$tax)[levels(Prefcent_tax_climate_05$tax)=="no"] <- "Neutral CO2 Tax"
+levels(Prefcent_tax_climate_05$tax)[levels(Prefcent_tax_climate_05$tax)=="oppose"] <- "Oppose CO2 Tax"
+levels(Prefcent_tax_climate_05$tax)[levels(Prefcent_tax_climate_05$tax)=="support"] <- "Support CO2 Tax"
+
+levels(Prefcent_cent_climate_05$climatecent)
+levels(Prefcent_cent_climate_05$climatecent)[levels(Prefcent_cent_climate_05$climatecent)=="no"] <- "Neutral Climate Cent"
+levels(Prefcent_cent_climate_05$climatecent)[levels(Prefcent_cent_climate_05$climatecent)=="oppose"] <- "Oppose Climate Cent"
+levels(Prefcent_cent_climate_05$climatecent)[levels(Prefcent_cent_climate_05$climatecent)=="support"] <- "Support Climate Cent"
+
+levels(Prefcent_revision_forest_05$revision)
+levels(Prefcent_revision_forest_05$revision)[levels(Prefcent_revision_forest_05$revision)=="no"] <- "Neutral FA Revision"
+levels(Prefcent_revision_forest_05$revision)[levels(Prefcent_revision_forest_05$revision)=="oppose"] <- "Oppose FA Revision"
+levels(Prefcent_revision_forest_05$revision)[levels(Prefcent_revision_forest_05$revision)=="support"] <- "Support FA Revision"
+
+levels(Prefcent_initiative_forest_05$initiative)
+levels(Prefcent_initiative_forest_05$initiative)[levels(Prefcent_initiative_forest_05$initiative)=="no"] <- "Neutral Initiative"
+levels(Prefcent_initiative_forest_05$initiative)[levels(Prefcent_initiative_forest_05$initiative)=="oppose"] <- "Oppose Initiative"
+levels(Prefcent_initiative_forest_05$initiative)[levels(Prefcent_initiative_forest_05$initiative)=="support"] <- "Support Initiative"
+
+# merge data frames for climate preference variables
+View(Prefcent_tax_climate_05)
+rownames(Prefcent_tax_climate_05) <- Prefcent_tax_climate_05$tax # change row names to preferences
+Prefcent_tax_climate_05$tax <- NULL
+
+View(Prefcent_cent_climate_05)
+rownames(Prefcent_cent_climate_05) <- Prefcent_cent_climate_05$climatecent # change row names to preferences
+Prefcent_cent_climate_05$climatecent <- NULL
+
+Prefcent_climate <- rbind(Prefcent_tax_climate_05, Prefcent_cent_climate_05)
+View(Prefcent_climate)
+
+
+# merge data frames for forest preference variables
+View(Prefcent_revision_forest_05)
+rownames(Prefcent_revision_forest_05) <- Prefcent_revision_forest_05$revision # change row names to preferences
+Prefcent_revision_forest_05$revision <- NULL
+
+View(Prefcent_initiative_forest_05)
+rownames(Prefcent_initiative_forest_05) <- Prefcent_initiative_forest_05$initiative # change row names to preferences
+Prefcent_initiative_forest_05$initiative <- NULL
+
+Prefcent_forest <- rbind(Prefcent_revision_forest_05, Prefcent_initiative_forest_05)
+View(Prefcent_forest)
+
+# export tables as png
+png("Preference_centralities_climate.png", height = 90*nrow(Groupcent), width = 350*ncol(Groupcent), res=250)
+grid.table(Prefcent_climate)
+dev.off()
+
+png("Preference_centralities_forest.png", height = 90*nrow(Groupcent), width = 350*ncol(Groupcent), res=250)
+grid.table(Prefcent_forest)
+dev.off()
+
+
+### key actors (based on degree centrality)
+
+# inspect threshold values for upper quartile degree centrality statistics 
+quantile(centrality_stats_climate_05$Degree) # upper quartile values above 0.44
+quantile(centrality_stats_forest_05$Degree) # upper quartile values above 0.68
+
+# create subset with key actors that are in upper quartile
+keyactors_climate <- subset(centrality_stats_climate_05, Degree>=0.44)
+keyactors_forest <- subset(centrality_stats_forest_05, Degree>=0.68)
+
+rownames(keyactors_climate)
+# the 10 key actors in the climate network are FC (Federal Council), DETEC (Federal Department of the Environment, Transport, Energy and Communications), CVP (Civic Democratic Party), FDP (Liberal Democratic Party), GP (Green Party), SP (Socialdemocratic Party), SVP (Swiss People's Party), AFRCP (Alliance for a Responsible Climate Policy), ECON (economiesuisse) & HEV (Swiss Houseowner Association)
+
+rownames(keyactors_forest)
+# the 9 key actors in the forest network are WVS (Association of Swiss Forest Owners), BRAT (Federal Council), UVEK (Federal Department of the Enviornment, Transport, Energy and Communications), BAFU (Federal Office for the Enviornment), CVP (Civic Democratic Party), FDP (Liberal Democratic Party), GP (Green Party), SP (Socialdemocratic Party), SVP (Swiss People's Party)
+
+# create data subsets with key actors and their preferences
+
+View(climate_cov_05)
+climate_cov_05_key <- subset(climate_cov_05, Abbrev == "BRAT" | Abbrev == "UVEK" | Abbrev == "CVP" | Abbrev == "FDP" | Abbrev == "GP" | Abbrev == "SP" | Abbrev == "SVP" | Abbrev == "AFVKP" | Abbrev == "ECON" | Abbrev == "HEV")
+View(climate_cov_05_key)
+
+forest_cov_05_key <- subset(forest_cov_05, Abbrev == "WVS" | Abbrev == "BRAT" | Abbrev == "UVEK" | Abbrev == "BAFU" | Abbrev == "CVP" | Abbrev == "FDP" | Abbrev == "GP" | Abbrev == "SP" | Abbrev == "SVP")
+View(forest_cov_05_key)
+
+#_________________________________________________________________________________________________________________________
+
+### plot
+
+# detach disturbing libraries
+detach(package:igraph) 
+
+# load necessary libraries
+library(network)
+library(sna)
+library(GGally)
+library(ggplot2)
+
+
+# create matrix object with network package
+
+net2_climate_05 <- network(mat_climate_05)
+net2_forest_05 <- network(mat_forest_05)
+
+# add relevant attributes
+net2_climate_05%v%"actorType" <- climate_cov_05$ActorType
+net2_climate_05%v%"tax" <- climate_cov_05$CO2Levy
+net2_climate_05%v%"climatecent" <- climate_cov_05$ClimateCent
+
+net2_forest_05%v%"actorType" <- forest_cov_05$ActorType
+net2_forest_05%v%"revision" <- forest_cov_05$WaG
+net2_forest_05%v%"initiative" <- forest_cov_05$Initiative
+
+# create color code for different actor types
+palette <- c("Economic Actors" = "darkslategray4", "Parties" = "darkgoldenrod2",
+             "Executive Branch" = "brown3", "Legislative Branch" = "lightcoral",
+             "Civil Society" = "darkcyan", "Environmental Actors" = "olivedrab3",
+             "Science" = "rosybrown1")
+
+# create shape code for different preferences regarding CO2 tax and revision
+pref_palette <- c("no" = 16, "oppose" = 15, "support" = 17) # 16 = round, 15 = square, 17 = triangle
+
+# get weights for degree centrality
+degree_climate <- round(degree(net2_climate_05, gmode = "graph"), 2) # round results
+degree_forest <- round(degree(net2_forest_05, gmode = "graph"), 2) # round results
+
+# create plot for climate network
+
+png("Climate_network.png", width=2500, height=1250, res=200)
+par(mar=c(4,4,4,4))
+ggnet2(net2_climate_05, alpha = 0.9, 
+       label = TRUE, label.size = 3, 
+       mode = "fruchtermanreingold",  
+       node.size = (degree_climate), 
+       max_size = 10, # adjust max node size to make better visible
+       size.cut = 5, # adjust how many different sizes should be displayed
+       arrow.size = 4, arrow.gap = 0.02,
+       edge.color = "gray84",
+       color = "actorType", # different colors depending on actor type
+       palette = palette, # use predefined colors for different actor types
+       shape = "tax", # use values of CO2 tax preference variable for different node shapes
+       shape.palette = pref_palette,
+       color.legend = "Actor Type",
+       shape.legend = "CO2 Tax Preferences",
+       size.legend = "Degree Centrality",
+       legend.size = 8, legend.position = "bottom") +
+  guides(color = guide_legend(override.aes = list(size=4), # adjust symbol sizes in legend since legend.size above only changes size of text
+                              title.position = "top", title.hjust = 0.5), # move legend title to top and adjust to middle
+         shape = guide_legend(override.aes = list(size=4),
+                              title.position = "top", title.hjust = 0.5),
+         size = guide_legend(title.position = "top", title.hjust = 0.5)) +
+  ggtitle("\nClimate Policy Network 2005-2008") + theme(plot.title = element_text(hjust=0.5))
+dev.off()
+
+
+# create plot for forest network
+
+png("Forest_network.png", width=2500, height=1250, res=200)
+par(mar=c(4,4,4,4))
+ggnet2(net2_forest_05, alpha = 0.9, 
+       label = TRUE, label.size = 3, 
+       mode = "fruchtermanreingold",  
+       node.size = (degree_forest),
+       max_size = 10, # adjust max node size to make better visible
+       size.cut = 6, # adjust how many different sizes should be displayed
+       arrow.size = 4, arrow.gap = 0.02,
+       edge.color = "gray84",
+       color = "actorType", # different colors depending on actor type
+       palette = palette, # use predefined colors for different actor types
+       shape = "revision", # use values of revision preference variable for different node shapes
+       shape.palette = pref_palette,
+       color.legend = "Actor Type",
+       shape.legend = "Forrest Law Revision Preferences",
+       size.legend = "Degree Centrality",
+       legend.size = 8, legend.position = "bottom") +
+  guides(color = guide_legend(override.aes = list(size=4), # adjust symbol sizes in legend since legend.size above only changes size of text
+                              title.position = "top", title.hjust = 0.5), # move legend title to top and adjust to middle
+         shape = guide_legend(override.aes = list(size=4),
+                              title.position = "top", title.hjust = 0.5),
+         size = guide_legend(title.position = "top", title.hjust = 0.5)) +
+  ggtitle("\nForest Policy Network 2005-2008") + theme(plot.title = element_text(hjust=0.5))
+dev.off()
+
